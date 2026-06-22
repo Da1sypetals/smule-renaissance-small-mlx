@@ -27,9 +27,6 @@ struct Args {
 
     #[arg(long, value_enum, default_value_t = ComputeDevice::Gpu)]
     device: ComputeDevice,
-
-    #[arg(long)]
-    alignment_directory: Option<PathBuf>,
 }
 
 fn main() -> Result<()> {
@@ -56,26 +53,17 @@ fn main() -> Result<()> {
         "Audio duration: {:.2} seconds",
         waveform.samples.len() as f64 / f64::from(SAMPLE_RATE)
     );
-    let preprocessed_samples = waveform.samples.clone();
     let normalization_factor = waveform.normalize();
 
     let spectral = SpectralTransform::new();
     let input = Array::from_slice(&waveform.samples, &[1, waveform.samples.len() as i32]);
     let input_spectrum = spectral.stft(&input)?;
     println!("Input STFT shape: {:?}", input_spectrum.shape());
-    if let Some(directory) = &args.alignment_directory {
-        std::fs::create_dir_all(directory)?;
-        input.save_numpy(directory.join("normalized.npy"))?;
-        input_spectrum.save_numpy(directory.join("input_stft.npy"))?;
-    }
 
     println!("Processing audio...");
     let inference_start = Instant::now();
     let enhanced_spectrum = model.forward(&input_spectrum)?;
     enhanced_spectrum.eval()?;
-    if let Some(directory) = &args.alignment_directory {
-        enhanced_spectrum.save_numpy(directory.join("enhanced_stft.npy"))?;
-    }
     let inference_elapsed = inference_start.elapsed();
     println!("Output STFT shape: {:?}", enhanced_spectrum.shape());
 
@@ -89,15 +77,6 @@ fn main() -> Result<()> {
         samples: output_samples,
         sample_rate: SAMPLE_RATE,
     };
-    if let Some(directory) = &args.alignment_directory {
-        Array::from_slice(&output.samples, &[1, output.samples.len() as i32])
-            .save_numpy(directory.join("enhanced_waveform.npy"))?;
-        Array::from_slice(
-            &preprocessed_samples,
-            &[1, preprocessed_samples.len() as i32],
-        )
-        .save_numpy(directory.join("preprocessed.npy"))?;
-    }
     println!("Saving enhanced audio to {}...", args.output.display());
     output.save_f32_wav(&args.output)?;
 
