@@ -1,0 +1,11 @@
+[package]
+name = "srs-inference"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.102"
+clap = { version = "4.6.1", features = ["derive"] }
+hound = "3.5.1"
+mlx-rs = { git = "https://github.com/blossom-slopware/mlx-rs.git", rev = "b81194a47c2c6ba4ecb0cf370e4f0d941f52dd5d", version = "0.25.3", features = ["accelerate", "metal"] }
+thiserror = "2.0.18"
