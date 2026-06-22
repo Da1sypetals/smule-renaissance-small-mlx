@@ -28,7 +28,7 @@ struct Args {
     #[arg(short, long)]
     checkpoint: PathBuf,
 
-    #[arg(long, value_enum, default_value_t = ComputeDevice::Cpu)]
+    #[arg(long, value_enum, default_value_t = ComputeDevice::Gpu)]
     device: ComputeDevice,
 
     /// Number of newly emitted STFT frames per model call.
