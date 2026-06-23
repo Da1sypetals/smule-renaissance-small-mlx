@@ -237,8 +237,8 @@
                         <polyline points="17 8 12 3 7 8"></polyline>
                         <line x1="12" y1="3" x2="12" y2="15"></line>
                     </svg>
-                    <p>Click to upload or drag and drop a WAV file</p>
-                    <p class="hint">Supports mono and stereo WAV files up to 50MB</p>
+                    <p>Click to upload or drag and drop an audio file</p>
+                    <p class="hint">Supports mono and stereo audio files</p>
                 </div>
             </div>
             <input type="file" id="fileInput" accept="audio/wav,audio/*" hidden>
@@ -307,7 +307,8 @@
         });
 
         function handleFile(file) {
-            if (!file.type.startsWith('audio/') && !file.name.endsWith('.wav')) {
+            const audioExtensions = /\.(aac|aif|aiff|alac|flac|m4a|mp3|ogg|opus|wav|webm)$/i;
+            if (!file.type.startsWith('audio/') && !audioExtensions.test(file.name)) {
                 showError('Please upload a valid audio file.');
                 return;
             }

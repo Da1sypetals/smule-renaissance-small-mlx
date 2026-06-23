@@ -6,7 +6,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use anyhow::Result;
 use axum::Router;
 use axum::body::Body;
-use axum::extract::{DefaultBodyLimit, Multipart, State};
+use axum::extract::{Multipart, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
@@ -272,7 +272,6 @@ async fn main() -> Result<()> {
         .route("/", get(index))
         .route("/api/health", get(health))
         .route("/api/enhance", post(enhance_handler))
-        .layer(DefaultBodyLimit::max(50 * 1024 * 1024))
         .with_state(AppState {
             worker_tx,
             output_dir: args.output_dir,
