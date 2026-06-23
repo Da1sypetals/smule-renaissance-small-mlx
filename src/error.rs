@@ -15,9 +15,18 @@ pub enum Error {
     #[error(transparent)]
     Wav(#[from] hound::Error),
 
-    /// The input WAV encoding is not supported by the exact decoder.
-    #[error("unsupported WAV encoding: {0}")]
-    UnsupportedWav(String),
+    /// Audio decoding or resampling failed.
+    #[error(transparent)]
+    Babycat(#[from] babycat::Error),
+
+    /// Audio decoding failed in both the Babycat primary path and the fallback path.
+    #[error("audio decode failed; babycat: {babycat}; fallback: {fallback}")]
+    AudioDecode {
+        /// Error returned by the primary Babycat decoder path.
+        babycat: String,
+        /// Error returned by the fallback decoder path.
+        fallback: String,
+    },
 
     /// An audio stream has no channels or samples.
     #[error("invalid audio: {0}")]

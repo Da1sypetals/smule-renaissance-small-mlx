@@ -1,17 +1,14 @@
-//! Audio decoding and the exact preprocessing/postprocessing used by the reference.
+//! Audio decoding and the preprocessing/postprocessing used by the reference.
 
-use std::f64::consts::PI;
 use std::path::Path;
+use std::process::Command;
 
-use mlx_rs::Array;
-use mlx_rs::ops::{conv1d, indexing::IndexOp, pad};
+use babycat::{Signal, Waveform, WaveformArgs};
 
 use crate::{Error, Result};
 
 /// Model sample rate.
 pub const SAMPLE_RATE: u32 = 48_000;
-const LOWPASS_FILTER_WIDTH: i32 = 6;
-const RESAMPLE_ROLLOFF: f64 = 0.99;
 const HIGHPASS_CUTOFF: f32 = 60.0;
 const HIGHPASS_Q: f32 = 0.707;
 
@@ -25,75 +22,32 @@ pub struct AudioBuffer {
 }
 
 impl AudioBuffer {
-    /// Decode a WAV with the same normalized PCM convention used by torchaudio.
-    pub fn load_wav(path: impl AsRef<Path>) -> Result<Self> {
-        let mut reader = hound::WavReader::open(path)?;
-        let spec = reader.spec();
-        if spec.channels == 0 {
-            return Err(Error::InvalidAudio("WAV declares zero channels".to_owned()));
+    /// Decode audio, convert it to mono, and resample to the model rate.
+    ///
+    /// Babycat is used as the primary file decoder. If Babycat's bundled decoder cannot
+    /// identify the container, the local `ffmpeg` binary is used to transcode the input
+    /// to in-memory WAV bytes, which are then decoded through Babycat as the common path.
+    pub fn load(path: impl AsRef<Path>) -> Result<Self> {
+        let path = path.as_ref();
+        match load_with_babycat_file(path) {
+            Ok(buffer) => Ok(buffer),
+            Err(babycat_error) => match load_with_ffmpeg_fallback(path) {
+                Ok(buffer) => Ok(buffer),
+                Err(fallback_error) => Err(Error::AudioDecode {
+                    babycat: babycat_error,
+                    fallback: fallback_error,
+                }),
+            },
         }
-
-        let interleaved = match (spec.sample_format, spec.bits_per_sample) {
-            (hound::SampleFormat::Float, 32) => reader
-                .samples::<f32>()
-                .collect::<std::result::Result<Vec<_>, _>>()?,
-            (hound::SampleFormat::Int, bits @ 1..=8) => {
-                let scale = 2.0f32.powi(i32::from(bits) - 1);
-                reader
-                    .samples::<i8>()
-                    .map(|sample| sample.map(|value| f32::from(value) / scale))
-                    .collect::<std::result::Result<Vec<_>, _>>()?
-            }
-            (hound::SampleFormat::Int, bits @ 9..=16) => {
-                let scale = 2.0f32.powi(i32::from(bits) - 1);
-                reader
-                    .samples::<i16>()
-                    .map(|sample| sample.map(|value| f32::from(value) / scale))
-                    .collect::<std::result::Result<Vec<_>, _>>()?
-            }
-            (hound::SampleFormat::Int, bits @ 17..=32) => {
-                let scale = 2.0f32.powi(i32::from(bits) - 1);
-                reader
-                    .samples::<i32>()
-                    .map(|sample| sample.map(|value| value as f32 / scale))
-                    .collect::<std::result::Result<Vec<_>, _>>()?
-            }
-            (format, bits) => {
-                return Err(Error::UnsupportedWav(format!(
-                    "{format:?} with {bits} bits per sample"
-                )));
-            }
-        };
-
-        if interleaved.is_empty() {
-            return Err(Error::InvalidAudio("WAV contains no samples".to_owned()));
-        }
-        let channels = usize::from(spec.channels);
-        if interleaved.len() % channels != 0 {
-            return Err(Error::InvalidAudio(
-                "interleaved sample count is not divisible by channel count".to_owned(),
-            ));
-        }
-
-        let samples = if channels == 1 {
-            interleaved
-        } else {
-            interleaved
-                .chunks_exact(channels)
-                .map(|frame| frame.iter().copied().sum::<f32>() / channels as f32)
-                .collect()
-        };
-        Ok(Self {
-            samples,
-            sample_rate: spec.sample_rate,
-        })
     }
 
-    /// Apply torchaudio's default sinc resampler and 60 Hz high-pass biquad.
+    /// Apply the reference 60 Hz high-pass biquad after decode-time sample-rate conversion.
     pub fn preprocess(mut self) -> Result<Self> {
         if self.sample_rate != SAMPLE_RATE {
-            self.samples = sinc_resample(&self.samples, self.sample_rate, SAMPLE_RATE)?;
-            self.sample_rate = SAMPLE_RATE;
+            return Err(Error::InvalidAudio(format!(
+                "decoded audio has sample rate {}, expected {}",
+                self.sample_rate, SAMPLE_RATE
+            )));
         }
         highpass_biquad_in_place(&mut self.samples, SAMPLE_RATE);
         Ok(self)
@@ -132,60 +86,56 @@ impl AudioBuffer {
     }
 }
 
-fn greatest_common_divisor(mut left: u32, mut right: u32) -> u32 {
-    while right != 0 {
-        let remainder = left % right;
-        left = right;
-        right = remainder;
+fn waveform_args() -> WaveformArgs {
+    WaveformArgs {
+        frame_rate_hz: SAMPLE_RATE,
+        convert_to_mono: true,
+        ..Default::default()
     }
-    left
 }
 
-fn sinc_resample(waveform: &[f32], original_rate: u32, new_rate: u32) -> Result<Vec<f32>> {
-    let gcd = greatest_common_divisor(original_rate, new_rate);
-    let original = (original_rate / gcd) as i32;
-    let new = (new_rate / gcd) as i32;
-    let base_frequency = f64::from(original.min(new)) * RESAMPLE_ROLLOFF;
-    let width = (f64::from(LOWPASS_FILTER_WIDTH * original) / base_frequency).ceil() as i32;
-    let kernel_size = width * 2 + original;
-    let mut kernel = Vec::with_capacity((new * kernel_size) as usize);
+fn audio_buffer_from_waveform(waveform: Waveform) -> Result<AudioBuffer> {
+    let samples = waveform.to_interleaved_samples().to_vec();
+    if samples.is_empty() {
+        return Err(Error::InvalidAudio("audio contains no samples".to_owned()));
+    }
+    Ok(AudioBuffer {
+        samples,
+        sample_rate: waveform.frame_rate_hz(),
+    })
+}
 
-    // This is torchaudio.functional._get_sinc_resample_kernel's float64
-    // construction followed by its default conversion to float32.
-    for phase in 0..new {
-        for offset in -width..(width + original) {
-            let index = f64::from(offset) / f64::from(original);
-            let mut time = (-f64::from(phase) / f64::from(new) + index) * base_frequency;
-            time = time.clamp(
-                -f64::from(LOWPASS_FILTER_WIDTH),
-                f64::from(LOWPASS_FILTER_WIDTH),
-            );
-            let window = (time * PI / f64::from(LOWPASS_FILTER_WIDTH) / 2.0)
-                .cos()
-                .powi(2);
-            let angle = time * PI;
-            let sinc = if angle == 0.0 {
-                1.0
-            } else {
-                angle.sin() / angle
-            };
-            kernel.push((sinc * window * base_frequency / f64::from(original)) as f32);
-        }
+fn load_with_babycat_file(path: &Path) -> std::result::Result<AudioBuffer, String> {
+    let path = path
+        .to_str()
+        .ok_or_else(|| format!("path is not valid UTF-8: {path:?}"))?;
+    let waveform = Waveform::from_file(path, waveform_args()).map_err(|error| error.to_string())?;
+    audio_buffer_from_waveform(waveform).map_err(|error| error.to_string())
+}
+
+fn load_with_ffmpeg_fallback(path: &Path) -> std::result::Result<AudioBuffer, String> {
+    let output = Command::new("ffmpeg")
+        .arg("-v")
+        .arg("error")
+        .arg("-i")
+        .arg(path)
+        .arg("-f")
+        .arg("wav")
+        .arg("-acodec")
+        .arg("pcm_f32le")
+        .arg("pipe:1")
+        .output()
+        .map_err(|error| format!("failed to start ffmpeg: {error}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("ffmpeg exited with {}: {stderr}", output.status));
     }
 
-    let input = Array::from_slice(waveform, &[1, waveform.len() as i32, 1]);
-    let padded = pad(
-        &input,
-        &[(0, 0), (width, width + original), (0, 0)],
-        None,
-        None,
-    )?;
-    let weights = Array::from_slice(&kernel, &[new, kernel_size, 1]);
-    let resampled = conv1d(&padded, &weights, original, 0, 1, 1)?;
-    let target_length =
-        ((u64::from(new_rate) * waveform.len() as u64).div_ceil(u64::from(original_rate))) as i32;
-    let flattened = resampled.reshape(&[1, -1])?.index((.., 0..target_length));
-    Ok(flattened.as_slice::<f32>().to_vec())
+    let waveform =
+        Waveform::from_encoded_bytes_with_hint(&output.stdout, waveform_args(), "wav", "audio/wav")
+            .map_err(|error| error.to_string())?;
+    audio_buffer_from_waveform(waveform).map_err(|error| error.to_string())
 }
 
 fn highpass_biquad_in_place(waveform: &mut [f32], sample_rate: u32) {
@@ -219,7 +169,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn gcd_reduces_audio_rates() {
-        assert_eq!(greatest_common_divisor(44_100, 48_000), 300);
+    fn preprocess_rejects_unexpected_rate() {
+        let buffer = AudioBuffer {
+            samples: vec![0.0],
+            sample_rate: 44_100,
+        };
+        assert!(buffer.preprocess().is_err());
     }
 }

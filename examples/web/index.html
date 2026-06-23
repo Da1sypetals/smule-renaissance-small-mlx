@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SRS Enhancement</title>
+    <style>
+        :root {
+            --bg-primary: #0d0d0d;
+            --bg-secondary: #171717;
+            --bg-tertiary: #262626;
+            --border-color: #2a2a2a;
+            --text-primary: #fafafa;
+            --text-secondary: #a3a3a3;
+            --accent: #d97757;
+            --accent-hover: #c26a4d;
+            --accent-glow: rgba(217, 119, 87, 0.15);
+            --radius: 16px;
+            --radius-sm: 10px;
+            --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: var(--font);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            line-height: 1.5;
+        }
+        .header {
+            width: 100%;
+            max-width: 800px;
+            padding: 56px 24px 32px;
+            text-align: center;
+        }
+        .header h1 {
+            font-size: 2.75rem;
+            font-weight: 600;
+            letter-spacing: -0.03em;
+            margin-bottom: 10px;
+            background: linear-gradient(180deg, #fff 0%, #a3a3a3 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .header p {
+            color: var(--text-secondary);
+            font-size: 1.125rem;
+            max-width: 480px;
+            margin: 0 auto;
+        }
+        .container {
+            width: 100%;
+            max-width: 640px;
+            padding: 0 24px 64px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 28px;
+            transition: border-color 0.2s;
+        }
+        .card:hover {
+            border-color: #333;
+        }
+        .drop-zone {
+            border: 2px dashed #333;
+            border-radius: var(--radius);
+            padding: 52px 24px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            background: var(--bg-tertiary);
+            position: relative;
+            overflow: hidden;
+        }
+        .drop-zone::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: var(--accent-glow);
+            opacity: 0;
+            transition: opacity 0.25s ease;
+        }
+        .drop-zone:hover, .drop-zone.dragover {
+            border-color: var(--accent);
+        }
+        .drop-zone:hover::before, .drop-zone.dragover::before {
+            opacity: 1;
+        }
+        .drop-zone-content {
+            position: relative;
+            z-index: 1;
+        }
+        .drop-zone svg {
+            width: 44px;
+            height: 44px;
+            margin-bottom: 16px;
+            color: var(--text-secondary);
+            transition: color 0.25s;
+        }
+        .drop-zone:hover svg, .drop-zone.dragover svg {
+            color: var(--accent);
+        }
+        .drop-zone p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+        .drop-zone .hint {
+            font-size: 0.8rem;
+            color: #525252;
+            margin-top: 6px;
+        }
+        .btn {
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            padding: 12px 32px;
+            border-radius: var(--radius-sm);
+            font-size: 0.95rem;
+            font-weight: 500;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+        }
+        .btn:hover { background: var(--accent-hover); transform: translateY(-1px); }
+        .btn:active { transform: translateY(0); }
+        .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+        .file-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 18px;
+            padding: 12px 16px;
+            background: var(--bg-tertiary);
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border-color);
+        }
+        .file-info svg { color: var(--accent); flex-shrink: 0; }
+        .file-info .name { font-weight: 500; font-size: 0.9rem; }
+        .file-info .size { color: var(--text-secondary); font-size: 0.85rem; }
+        .audio-player {
+            width: 100%;
+            margin-top: 16px;
+            border-radius: var(--radius-sm);
+            height: 40px;
+        }
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 18px;
+            padding: 12px 16px;
+            background: var(--bg-tertiary);
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+        .spinner {
+            width: 18px;
+            height: 18px;
+            border: 2px solid #333;
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            flex-shrink: 0;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .error {
+            margin-top: 12px;
+            padding: 12px 16px;
+            background: rgba(239, 68, 68, 0.08);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            border-radius: var(--radius-sm);
+            color: #ef4444;
+            font-size: 0.9rem;
+        }
+        .section-title {
+            font-size: 1rem;
+            font-weight: 500;
+            margin-bottom: 14px;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .section-title svg { color: var(--accent); }
+        .meta {
+            display: flex;
+            gap: 16px;
+            margin-top: 12px;
+            flex-wrap: wrap;
+        }
+        .meta-item {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            background: var(--bg-tertiary);
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+        }
+        .meta-item span { color: var(--text-primary); font-weight: 500; }
+        .divider {
+            height: 1px;
+            background: var(--border-color);
+            margin: 20px 0;
+        }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>SRS Enhancement</h1>
+        <p>Upload an audio file to enhance it with Smule Renaissance Small. All processing happens locally on your machine.</p>
+    </div>
+    <div class="container">
+        <div class="card">
+            <div class="section-title">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                Upload Audio
+            </div>
+            <div class="drop-zone" id="dropZone">
+                <div class="drop-zone-content">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                    <p>Click to upload or drag and drop a WAV file</p>
+                    <p class="hint">Supports mono and stereo WAV files up to 50MB</p>
+                </div>
+            </div>
+            <input type="file" id="fileInput" accept="audio/wav,audio/*" hidden>
+            <div class="file-info hidden" id="fileInfo">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                <div>
+                    <div class="name" id="fileName"></div>
+                    <div class="size" id="fileSize"></div>
+                </div>
+            </div>
+            <audio class="audio-player hidden" id="inputPlayer" controls></audio>
+            <div class="divider"></div>
+            <div style="text-align: center;">
+                <button class="btn" id="enhanceBtn" disabled>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                    Enhance Audio
+                </button>
+            </div>
+            <div class="status hidden" id="status">
+                <div class="spinner" id="spinner"></div>
+                <span id="statusText">Processing...</span>
+            </div>
+            <div class="error hidden" id="error"></div>
+        </div>
+        <div class="card hidden" id="resultCard">
+            <div class="section-title">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
+                Enhanced Audio
+            </div>
+            <audio class="audio-player" id="outputPlayer" controls></audio>
+            <div class="meta" id="meta"></div>
+            <div style="margin-top: 18px; text-align: center;">
+                <a class="btn" id="downloadBtn" download>Download Result</a>
+            </div>
+        </div>
+    </div>
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const fileInfo = document.getElementById('fileInfo');
+        const inputPlayer = document.getElementById('inputPlayer');
+        const enhanceBtn = document.getElementById('enhanceBtn');
+        const status = document.getElementById('status');
+        const statusText = document.getElementById('statusText');
+        const error = document.getElementById('error');
+        const resultCard = document.getElementById('resultCard');
+        const outputPlayer = document.getElementById('outputPlayer');
+        const meta = document.getElementById('meta');
+        const downloadBtn = document.getElementById('downloadBtn');
+
+        let currentFile = null;
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+        });
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length) handleFile(e.target.files[0]);
+        });
+
+        function handleFile(file) {
+            if (!file.type.startsWith('audio/') && !file.name.endsWith('.wav')) {
+                showError('Please upload a valid audio file.');
+                return;
+            }
+            currentFile = file;
+            document.getElementById('fileName').textContent = file.name;
+            document.getElementById('fileSize').textContent = formatSize(file.size);
+            fileInfo.classList.remove('hidden');
+            const url = URL.createObjectURL(file);
+            inputPlayer.src = url;
+            inputPlayer.classList.remove('hidden');
+            enhanceBtn.disabled = false;
+            error.classList.add('hidden');
+            error.textContent = '';
+            resultCard.classList.add('hidden');
+        }
+
+        function formatSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        function showError(msg) {
+            error.textContent = msg;
+            error.classList.remove('hidden');
+        }
+
+        enhanceBtn.addEventListener('click', async () => {
+            if (!currentFile) return;
+            enhanceBtn.disabled = true;
+            status.classList.remove('hidden');
+            error.classList.add('hidden');
+            error.textContent = '';
+            statusText.textContent = 'Uploading and processing...';
+
+            const formData = new FormData();
+            formData.append('file', currentFile);
+
+            try {
+                const response = await fetch('/api/enhance', {
+                    method: 'POST',
+                    body: formData
+                });
+                if (!response.ok) {
+                    const text = await response.text();
+                    throw new Error(text || 'Processing failed');
+                }
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                outputPlayer.src = url;
+                downloadBtn.href = url;
+                downloadBtn.download = 'enhanced_' + currentFile.name;
+
+                const duration = response.headers.get('X-Processing-Time');
+                const rtf = response.headers.get('X-RTF');
+                let metaHtml = '';
+                if (duration) metaHtml += `<div class="meta-item">Time: <span>${parseFloat(duration).toFixed(3)}s</span></div>`;
+                if (rtf) metaHtml += `<div class="meta-item">RTF: <span>${parseFloat(rtf).toFixed(4)}</span></div>`;
+                meta.innerHTML = metaHtml;
+
+                resultCard.classList.remove('hidden');
+                status.classList.add('hidden');
+                resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            } catch (e) {
+                showError(e.message);
+                status.classList.add('hidden');
+            } finally {
+                enhanceBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>

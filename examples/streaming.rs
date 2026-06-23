@@ -68,7 +68,7 @@ fn main() -> Result<()> {
 
     let mut model = Renaissance::load(&args.checkpoint)
         .with_context(|| format!("loading {}", args.checkpoint.display()))?;
-    let decoded = AudioBuffer::load_wav(&args.input)
+    let decoded = AudioBuffer::load(&args.input)
         .with_context(|| format!("loading {}", args.input.display()))?;
     let mut waveform = decoded.preprocess()?;
     let normalization_factor = waveform.normalize();

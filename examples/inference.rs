@@ -41,7 +41,7 @@ fn main() -> Result<()> {
     println!("Loading model from {}...", args.checkpoint.display());
     let mut model = Renaissance::load(&args.checkpoint)?;
     println!("Loading audio from {}...", args.input.display());
-    let decoded = AudioBuffer::load_wav(&args.input)?;
+    let decoded = AudioBuffer::load(&args.input)?;
     if decoded.sample_rate != SAMPLE_RATE {
         println!(
             "Resampling from {} Hz to {} Hz",
